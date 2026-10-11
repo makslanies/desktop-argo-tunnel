@@ -270,7 +270,6 @@
     "create": "Создать",
     "passwordMismatch": "Пароли не совпадают",
     "entryCount": "Записей: {{count}}",
-    "close": "Закрыть",
     "groups": "Группы",
     "allEntries": "Все записи",
     "newGroup": "Название новой группы",
@@ -305,6 +304,11 @@
     "changePasswordTitle": "Смена мастер-пароля",
     "changePasswordWarning": "База будет перешифрована новым паролем. Старый пароль храните, пока не проверите новый.",
     "newPassword": "Новый мастер-пароль",
-    "passwordChanged": "Мастер-пароль изменён"
+    "passwordChanged": "Мастер-пароль изменён",
+    "lock": "Заблокировать",
+    "autoLock": "Автоблокировка",
+    "autoLockNever": "Никогда",
+    "autoLockAfter": "Через {{count}} мин",
+    "autoLocked": "База KeePass заблокирована из-за бездействия"
   }
 }

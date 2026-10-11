@@ -8,6 +8,7 @@ import ServerManagement from "../components/Servers/ServerManagement";
 import RecentConnections from "../components/Recent/RecentConnections";
 import Favorites from "../components/Favorites/Favorites";
 import KeePassPanel from "../components/KeePass/KeePassPanel";
+import { useKeePassAutoLock } from "../components/KeePass/useKeePassAutoLock";
 import { useStore } from "../store";
 
 export const Route = createFileRoute("/")({
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const { activeTab } = useStore();
+  useKeePassAutoLock();
 
   // Render different views based on active tab
   const renderView = () => {

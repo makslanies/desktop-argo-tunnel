@@ -264,7 +264,6 @@
     "create": "Create",
     "passwordMismatch": "Passwords do not match",
     "entryCount": "{{count}} entries",
-    "close": "Close",
     "groups": "Groups",
     "allEntries": "All entries",
     "newGroup": "New group name",
@@ -299,6 +298,11 @@
     "changePasswordTitle": "Change master password",
     "changePasswordWarning": "The database is re-encrypted with the new password. Keep the old one until you have checked the new one.",
     "newPassword": "New master password",
-    "passwordChanged": "Master password changed"
+    "passwordChanged": "Master password changed",
+    "lock": "Lock",
+    "autoLock": "Auto-lock",
+    "autoLockNever": "Never",
+    "autoLockAfter": "After {{count}} min",
+    "autoLocked": "KeePass vault locked after inactivity"
   }
 }

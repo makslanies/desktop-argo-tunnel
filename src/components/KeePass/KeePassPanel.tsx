@@ -3,11 +3,12 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { Copy, Eye, EyeOff, FolderOpen, FolderPlus, KeyRound, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Copy, Eye, EyeOff, FolderOpen, FolderPlus, KeyRound, Lock, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import Button from "../Button/Button";
 import ConfirmationModal from "../ConfirmationModal";
 import Modal from "../Modal/Modal";
 import { useToast } from "../../hooks/useToast";
+import { AUTO_LOCK_OPTIONS, useKeePassSession } from "../../store/keepassSession";
 import type { EntryInput } from "../../generated/ts-rs/EntryInput";
 import type { VaultEntry } from "../../generated/ts-rs/VaultEntry";
 import type { VaultEntrySummary } from "../../generated/ts-rs/VaultEntrySummary";
@@ -31,10 +32,14 @@ async function pickFile(filters?: { name: string; extensions: string[] }[]): Pro
 const CLIPBOARD_CLEAR_MS = 30_000;
 
 export default function KeePassPanel() {
-  const [vault, setVault] = useState<VaultInfo | null>(null);
+  // The session lives in a store, not in this component, so the vault stays open
+  // (and keeps auto-locking) when the user switches to another tab.
+  const vault = useKeePassSession((s) => s.vault);
+  const setVault = useKeePassSession((s) => s.setVault);
+  const lock = useKeePassSession((s) => s.lock);
 
   return vault ? (
-    <VaultView vault={vault} onClose={() => setVault(null)} />
+    <VaultView vault={vault} onLock={lock} />
   ) : (
     <VaultOpener onOpened={setVault} />
   );
@@ -225,7 +230,7 @@ const emptyDraft = (groupId: string): EntryDraft => ({
   notes: "",
 });
 
-function VaultView({ vault, onClose }: { vault: VaultInfo; onClose: () => void }) {
+function VaultView({ vault, onLock }: { vault: VaultInfo; onLock: () => Promise<void> }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [groups, setGroups] = useState<VaultGroup[]>([]);
@@ -241,6 +246,8 @@ function VaultView({ vault, onClose }: { vault: VaultInfo; onClose: () => void }
     { kind: "entry"; id: string; title: string } | { kind: "group"; id: string; name: string } | null
   >(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const autoLockMinutes = useKeePassSession((s) => s.autoLockMinutes);
+  const setAutoLockMinutes = useKeePassSession((s) => s.setAutoLockMinutes);
   const pendingCopy = useRef<{ value: string; timer: number } | null>(null);
 
   const rootGroup = groups.find((g) => g.parentId === null) ?? null;
@@ -406,13 +413,7 @@ function VaultView({ vault, onClose }: { vault: VaultInfo; onClose: () => void }
     }
   };
 
-  const close = async () => {
-    try {
-      await invoke("keepass_close", { vaultId: vault.id });
-    } finally {
-      onClose();
-    }
-  };
+  const close = () => onLock();
 
   return (
     <div className="h-full flex flex-col p-6 gap-4 min-h-0">
@@ -427,8 +428,22 @@ function VaultView({ vault, onClose }: { vault: VaultInfo; onClose: () => void }
           <Button variant="secondary" onClick={() => setShowChangePassword(true)} icon={<KeyRound size={16} />}>
             {t("keepass.changePassword")}
           </Button>
-          <Button variant="secondary" onClick={close}>
-            {t("keepass.close")}
+          <label className="flex items-center gap-2 text-xs text-gray-400">
+            {t("keepass.autoLock")}
+            <select
+              className="px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white focus:outline-none"
+              value={autoLockMinutes}
+              onChange={(e) => setAutoLockMinutes(Number(e.target.value))}
+            >
+              {AUTO_LOCK_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes} className="bg-[#0a0a0a]">
+                  {minutes === 0 ? t("keepass.autoLockNever") : t("keepass.autoLockAfter", { count: minutes })}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button variant="secondary" onClick={close} icon={<Lock size={16} />}>
+            {t("keepass.lock")}
           </Button>
         </div>
       </div>
