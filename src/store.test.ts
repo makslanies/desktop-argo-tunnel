@@ -7,6 +7,8 @@ vi.mock('@tauri-apps/api/core');
 
 describe('useStore', () => {
   beforeEach(() => {
+    // The store is shared between tests, so favorites and tunnels start empty every time.
+    useStore.setState({ favorites: [], tunnels: [] });
     // Reset store state before each test
     const { result } = renderHook(() => useStore());
     act(() => {
@@ -143,6 +145,11 @@ describe('useStore', () => {
   });
 
   describe('Tunnel Management', () => {
+    beforeEach(() => {
+      // With cloudflared present, starting a tunnel does not try to install it first.
+      useStore.setState({ cloudflaredVersion: '2026.10.0' });
+    });
+
     it('should start TCP tunnel', async () => {
       const { result } = renderHook(() => useStore());
       const mockInvoke = vi.mocked(invoke);

@@ -71,5 +71,9 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
+  },
+  "overrides": {
+    "dompurify": "^3.4.16",
+    "@xmldom/xmldom": "^0.8.15"
   }
 }

@@ -25,7 +25,7 @@ log() {
 }
 
 # Configuration
-VERSION="2025.4.0"
+VERSION="2026.10.0"
 BIN_DIR="src-tauri/binaries"
 log "INFO" "Creating binaries directory: $BIN_DIR"
 mkdir -p "$BIN_DIR"

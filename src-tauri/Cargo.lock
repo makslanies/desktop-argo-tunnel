@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-argo-tunnel"
-version = "0.3.8"
+version = "0.3.11"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm",
