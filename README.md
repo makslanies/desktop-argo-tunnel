@@ -3,7 +3,7 @@
 > A modern, professional GUI for managing Cloudflare Tunnels and remote server connections
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.11-green.svg)](https://github.com/mlanies/desktop-argo-tunnel/releases/tag/v0.3.11)
+[![Version](https://img.shields.io/badge/version-0.3.12-green.svg)](https://github.com/mlanies/desktop-argo-tunnel/releases/tag/v0.3.12)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)]()
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri-24C8DB)]()
 
@@ -41,11 +41,12 @@
   - Automatic tunnel creation on connect
 
 - **KeePass Password Management**
-  - Built-in KeePass (.kdbx) database support
-  - Create, open, and manage password containers
-  - Secure credential storage with AES-256 encryption
-  - Import/export KeePass databases
-  - Password quality analysis and security scoring
+  - Create, open, and edit KeePass (.kdbx, KDBX 4) databases, with optional key files
+  - Every change is saved to the file straight away; the previous version is kept as `.kdbx.bak`
+  - Group tree, search, and an entry editor for titles, usernames, passwords, URLs, and notes
+  - Copied passwords are cleared from the clipboard after 30 seconds
+  - Auto-lock after 1, 5, 15, or 30 minutes of inactivity (or never), and lock when the window is minimized
+  - Change the master password from inside an open database
 
 - **Dashboard & Analytics**
   - Real-time connection statistics
@@ -153,14 +154,15 @@
 ```
 desktop-argo-tunnel/
 ├── src/                    # Frontend source
-│   ├── components/         # React components
-│   ├── routes/            # Route definitions
-│   ├── i18n/              # Translations
-│   └── store.ts           # State management
-├── src-tauri/             # Rust backend
+│   ├── components/         # React components (incl. KeePass/)
+│   ├── routes/             # Route definitions
+│   ├── i18n/               # Translations
+│   └── store.ts            # State management
+├── src-tauri/              # Rust backend
 │   ├── src/
-│   │   ├── main.rs        # Entry point
-│   │   └── cloudflared/   # Cloudflared integration
+│   │   ├── main.rs         # Entry point
+│   │   ├── cloudflared/    # Cloudflared integration
+│   │   └── keepass/        # KeePass vault commands and file handling
 │   └── Cargo.toml
 ├── docs/                  # Documentation
 └── public/                # Static assets
@@ -170,7 +172,7 @@ desktop-argo-tunnel/
 
 ### Prerequisites
 
-- Node.js 18+ and pnpm
+- Node.js 18+ and npm
 - Rust 1.70+
 - Tauri CLI
 
@@ -182,21 +184,23 @@ git clone <repository-url>
 cd desktop-argo-tunnel
 
 # Install dependencies
-pnpm install
+npm install
 
 # Run in development mode
-pnpm tauri dev
+npm run tauri dev
 
 # Build for production
-pnpm tauri build
+npm run tauri build
 ```
 
 ### Available Scripts
 
-- `pnpm dev` - Start Vite dev server
-- `pnpm build` - Build frontend
-- `pnpm tauri dev` - Run Tauri in development mode
-- `pnpm tauri build` - Build production application
+- `npm run dev` - Start Vite dev server
+- `npm run build` - Type-check and build frontend
+- `npm test` - Run the frontend test suite (Vitest)
+- `npm run tauri dev` - Run Tauri in development mode
+- `npm run tauri build` - Build production application
+- `cargo test` (in `src-tauri/`) - Run the Rust tests, including the KeePass vault tests
 
 ## Configuration
 

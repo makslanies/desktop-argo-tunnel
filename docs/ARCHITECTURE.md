@@ -94,6 +94,12 @@ User clicks "Connect"
   - Cloudflared binary path
   - Auto-connection settings
 
+#### 5. **KeePass**
+Location: `src/components/KeePass/`
+
+- `KeePassPanel.tsx`: the opener (file list, Browse, password, optional key file, create form) and the vault view (groups, search, entries, entry editor, change-password modal).
+- `useKeePassAutoLock.ts`: app-wide hook that locks the vault after inactivity and when the window is hidden. It is mounted once in the main route, so it keeps running on other tabs.
+
 ### Backend (Rust + Tauri)
 
 #### 1. **Cloudflared Command Module**
@@ -121,6 +127,18 @@ Location: `src-tauri/src/cloudflared/commands.rs`
 1. `start_tcp_tunnel`: Start process -> Save PID
 2. `stop_tcp_tunnel`: Find PID -> Terminate process -> Remove from map
 
+#### 3. **KeePass Vault Module**
+Location: `src-tauri/src/keepass/`
+
+- `vault.rs`: the `Vault` type. It wraps the `keepass` crate (0.15, `save_kdbx4`) and owns the decrypted database and its key while the vault is open. It has all read and write operations, including the rules for file names, the minimum password length, and the Argon2 profile.
+- `commands.rs`: Tauri commands (`keepass_*`). It resolves `~/KeePassContainers`, reads key files, and turns Rust errors into strings for the frontend.
+- `models.rs`: DTOs exported to TypeScript through `ts-rs` (`VaultInfo`, `VaultGroup`, `VaultEntrySummary`, `VaultEntry`, `EntryInput`).
+- `mod.rs`: `KeePassState`, a `Mutex<HashMap<vault id, Vault>>` of open vaults.
+
+**Write path.** Every change calls `save()`, which encrypts the whole database into memory, writes `<name>.kdbx.tmp`, copies the current file to `<name>.kdbx.bak`, and renames the temp file over the target.
+
+**Key handling.** Passwords are never returned in listings. `keepass_get_entry` is the only command that returns one. Closing a vault drops its `Vault` and therefore its `DatabaseKey`, which is zeroized on drop.
+
 ### State Management (Zustand)
 
 Location: `src/store.ts`
@@ -138,6 +156,17 @@ Location: `src/store.ts`
 - Tunnel management: `startTcpTunnel`, `stopTcpTunnel`
 - Server management: `handleConnectService`, `handleDisconnectService`
 - UI state: `setActiveTab`, `toggleFavorite`
+
+### KeePass Session Store
+
+Location: `src/store/keepassSession.ts`
+
+Separate from the main store, so the open vault survives tab switches.
+
+- `vault`: the open `VaultInfo`, or `null` when locked
+- `autoLockMinutes`: 1, 5 (default), 15, 30, or 0 for never. Saved in `localStorage`.
+- `lastActivity`: timestamp of the last input, throttled to one update per second
+- `lock()`: hides the vault in the UI first, then calls `keepass_close` so the backend drops the key
 
 ## Data Flow
 
@@ -188,6 +217,25 @@ Location: `src/store.ts`
    └─> Update UI
 ```
 
+## KeePass Vault Lifecycle
+
+```
+Open / Create
+  -> keepass_open / keepass_create (Rust reads or writes the file, KDF runs)
+  -> Vault registered in KeePassState, id returned as VaultInfo
+  -> setVault() in keepassSession store, lastActivity = now
+
+Working
+  -> keepass_list_* / keepass_get_entry (read)
+  -> keepass_save_entry / delete / group / change_password (read-modify-write, then save())
+  -> any input calls touch()
+
+Locked (Lock button, inactivity timeout, window hidden)
+  -> keepassSession.lock(): vault = null in the UI
+  -> keepass_close: Vault dropped in Rust, key zeroized
+  -> clipboard cleared if it still holds a copied secret
+```
+
 ## File Structure
 
 ```
@@ -200,13 +248,17 @@ desktop-argo-tunnel/
 │   │   │   └── ServerManagement.tsx  # Server management
 │   │   ├── Tunnels/
 │   │   │   └── ActiveConnections.tsx # Active tunnels list
+│   │   ├── KeePass/
+│   │   │   ├── KeePassPanel.tsx   # Vault opener and vault view
+│   │   │   └── useKeePassAutoLock.ts # Inactivity and hidden-window lock
 │   │   ├── Settings/
 │   │   │   └── Settings.tsx       # Application settings
 │   │   ├── Navigation/
 │   │   │   ├── Sidebar.tsx        # Main navigation
 │   │   │   └── NavItem.tsx
-│   │   ├── CommandPalette/
+│   │   └── CommandPalette/
 │   │       └── CommandPalette.tsx # Cmd+K search
+│   ├── generated/ts-rs/           # Types generated from Rust (do not edit)
 │   ├── routes/
 │   │   ├── __root.tsx             # Root layout
 │   │   └── index.tsx              # Main route
@@ -214,6 +266,8 @@ desktop-argo-tunnel/
 │   │   └── locales/
 │   │       ├── en.json            # English translations
 │   │       └── ru.json            # Russian translations
+│   ├── store/
+│   │   └── keepassSession.ts      # Open vault and auto-lock settings
 │   ├── store.ts                   # Zustand state management
 │   └── main.tsx                   # Entry point
 │
@@ -222,6 +276,11 @@ desktop-argo-tunnel/
 │   │   ├── cloudflared/
 │   │   │   ├── mod.rs             # Module definition
 │   │   │   └── commands.rs        # Tauri commands
+│   │   ├── keepass/
+│   │   │   ├── mod.rs             # KeePassState and setup
+│   │   │   ├── vault.rs           # Vault: file format and operations, with tests
+│   │   │   ├── commands.rs        # keepass_* Tauri commands
+│   │   │   └── models.rs          # DTOs exported to TypeScript
 │   │   ├── lib.rs                 # Main library
 │   │   └── main.rs                # Entry point
 │   ├── Cargo.toml                 # Rust dependencies
@@ -229,6 +288,7 @@ desktop-argo-tunnel/
 │
 └── docs/
     ├── ARCHITECTURE.md            # This file
+    ├── USER_GUIDE.md              # User guide
     └── screenshots/               # UI Screenshots
 ```
 
@@ -251,6 +311,8 @@ desktop-argo-tunnel/
 
 ### External Dependencies
 - **cloudflared** - Cloudflare tunnel binary
+- **keepass 0.15** - KDBX 4 reading and writing (Argon2 key derivation, AES-256 outer cipher)
+- **tauri-plugin-dialog** - Native file picker for `.kdbx` and key files
 - **OS Process Management** - Native process management
 
 ## Security
@@ -260,6 +322,10 @@ desktop-argo-tunnel/
 3. **Credential Storage**: Uses native secure OS storage (keychain)
 4. **IPC Security**: Protected Tauri IPC layer between frontend and backend
 5. **No Elevated Privileges**: Application runs with user privileges
+6. **KeePass Key Lifetime**: An open vault keeps its key in memory. It is dropped on lock, on inactivity timeout (1–30 minutes, or never), or when the window is hidden
+7. **KeePass Clipboard**: Copied passwords are cleared after 30 seconds, or when the vault locks, if the clipboard still holds the copied value
+8. **KeePass Passwords in Transit**: Entry listings never include passwords. Only `keepass_get_entry` returns one, for a single entry
+9. **KeePass Key Derivation**: Argon2 with 64 MiB memory and 2 iterations, the KeePass default profile
 
 ## Limitations and Roadmap
 
@@ -268,6 +334,8 @@ desktop-argo-tunnel/
 2. **Random Port Only**: Cannot specify custom local port
 3. **No Log Streaming**: Cannot view cloudflared logs in real-time
 4. **No Tunnel Configuration**: Cannot manage ingress rules
+5. **KeePass Feature Gaps**: No attachments, entry history, TOTP, or import/export of other password managers
+6. **Auto-lock Timing**: The inactivity timer runs in the webview. A heavily throttled background webview can lock late
 
 ### Planned Improvements
 1. **Process Recovery**: Discovery and reconnection to existing cloudflared processes
