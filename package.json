@@ -1,7 +1,7 @@
 {
   "name": "desktop-argo-tunnel",
   "private": true,
-  "version": "0.3.14",
+  "version": "0.3.15",
   "license": "MIT",
   "type": "module",
   "scripts": {
