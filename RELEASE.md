@@ -43,7 +43,7 @@ The project uses GitHub Actions to automatically build and release the applicati
    - Upload all build artifacts to the release
 
 5. **Review and publish the release**:
-   - Go to https://github.com/mlanies/desktop-argo-tunnel/releases
+   - Go to https://github.com/makslanies/desktop-argo-tunnel/releases
    - Find the draft release
    - Edit the release notes if needed
    - Click "Publish release"
@@ -52,7 +52,7 @@ The project uses GitHub Actions to automatically build and release the applicati
 
 You can also manually trigger a release build:
 
-1. Go to https://github.com/mlanies/desktop-argo-tunnel/actions
+1. Go to https://github.com/makslanies/desktop-argo-tunnel/actions
 2. Select "Release" workflow
 3. Click "Run workflow"
 4. Select the branch and click "Run workflow"

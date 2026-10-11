@@ -3,9 +3,11 @@
 > A modern, professional GUI for managing Cloudflare Tunnels and remote server connections
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.3.12-green.svg)](https://github.com/mlanies/desktop-argo-tunnel/releases/tag/v0.3.12)
+[![Latest version](https://img.shields.io/github/v/tag/makslanies/desktop-argo-tunnel?sort=semver&label=version)](https://github.com/makslanies/desktop-argo-tunnel/tags)
+[![Release workflow](https://github.com/makslanies/desktop-argo-tunnel/actions/workflows/release.yml/badge.svg?event=push)](https://github.com/makslanies/desktop-argo-tunnel/actions/workflows/release.yml)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)]()
-[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri-24C8DB)]()
+[![Built with Tauri 2](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB?logo=tauri&logoColor=white)](https://tauri.app)
+[![Rust](https://img.shields.io/badge/Rust-stable-DEA584?logo=rust&logoColor=black)](https://www.rust-lang.org)
 
 <a href="https://www.producthunt.com/products/desktop-cloudflare-tunnel-ui?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-desktop&#0045;cloudflare&#0045;tunnel&#0045;ui" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1046645&theme=dark&t=1764960674909" alt="Desktop&#0032;Cloudflare&#0032;Tunnel&#0032;UI - One&#0045;click&#0032;GUI&#0032;for&#0032;Cloudflare&#0032;RDP&#0044;&#0032;SSH&#0032;&#0038;&#0032;TCP&#0032;tunnels | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
@@ -93,7 +95,7 @@
 
 ### Download & Install
 
-1. Download the latest release for your platform from [Releases](https://github.com/mlanies/desktop-argo-tunnel/releases)
+1. Download the latest release for your platform from [Releases](https://github.com/makslanies/desktop-argo-tunnel/releases)
 2. Install the application:
    - **macOS**: Open the `.dmg` file and drag to Applications
    - **Windows**: Run the `.exe` installer
