@@ -309,6 +309,7 @@
     "autoLock": "Автоблокировка",
     "autoLockNever": "Никогда",
     "autoLockAfter": "Через {{count}} мин",
-    "autoLocked": "База KeePass заблокирована из-за бездействия"
+    "autoLocked": "База KeePass заблокирована из-за бездействия",
+    "lockedOnHide": "База KeePass заблокирована: окно свёрнуто"
   }
 }

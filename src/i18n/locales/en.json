@@ -303,6 +303,7 @@
     "autoLock": "Auto-lock",
     "autoLockNever": "Never",
     "autoLockAfter": "After {{count}} min",
-    "autoLocked": "KeePass vault locked after inactivity"
+    "autoLocked": "KeePass vault locked after inactivity",
+    "lockedOnHide": "KeePass vault locked because the window was hidden"
   }
 }

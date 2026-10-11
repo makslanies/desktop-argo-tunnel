@@ -68,4 +68,32 @@ describe('useKeePassAutoLock', () => {
     expect(useKeePassSession.getState().vault).not.toBeNull();
     expect(invoke).not.toHaveBeenCalled();
   });
+
+  it('locks the vault as soon as the window is hidden', async () => {
+    renderHook(() => useKeePassAutoLock());
+    useKeePassSession.getState().setVault(vault);
+
+    const setVisibility = (state: DocumentVisibilityState) =>
+      Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    await act(async () => {
+      setVisibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    setVisibility('visible');
+
+    expect(useKeePassSession.getState().vault).toBeNull();
+    expect(invoke).toHaveBeenCalledWith('keepass_close', { vaultId: 'vault-1' });
+  });
+
+  it('does nothing when the window is hidden with no vault open', async () => {
+    renderHook(() => useKeePassAutoLock());
+
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+
+    expect(invoke).not.toHaveBeenCalled();
+  });
 });
