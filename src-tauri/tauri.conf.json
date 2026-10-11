@@ -5,9 +5,9 @@
   "version": "0.3.11",
   "identifier": "com.desktop-argo-tunnel.app",
   "build": {
-    "beforeDevCommand": "pnpm run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm run build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
