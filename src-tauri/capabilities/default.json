@@ -21,6 +21,8 @@
     "shell:allow-kill",
     "shell:allow-spawn",
     "clipboard-manager:default",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text",
+    "dialog:allow-open"
   ]
 }

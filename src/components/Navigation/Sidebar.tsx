@@ -5,7 +5,8 @@ import {
   Network, 
   Clock, 
   Star, 
-  Settings
+  Settings,
+  KeyRound
 } from "lucide-react";
 import { motion } from "framer-motion";
 import NavItem from "./NavItem";
@@ -66,6 +67,12 @@ export default function Sidebar() {
           label={t('nav.servers')} 
           active={activeTab === 'servers'}
           onClick={() => setActiveTab('servers')}
+        />
+        <NavItem 
+          icon={<KeyRound size={18} />} 
+          label={t('nav.keepass')} 
+          active={activeTab === 'keepass'}
+          onClick={() => setActiveTab('keepass')}
         />
       </motion.div>
 

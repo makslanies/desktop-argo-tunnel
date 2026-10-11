@@ -7,6 +7,7 @@ import Settings from "../components/Settings/Settings";
 import ServerManagement from "../components/Servers/ServerManagement";
 import RecentConnections from "../components/Recent/RecentConnections";
 import Favorites from "../components/Favorites/Favorites";
+import KeePassPanel from "../components/KeePass/KeePassPanel";
 import { useStore } from "../store";
 
 export const Route = createFileRoute("/")({
@@ -27,6 +28,8 @@ function Index() {
         return <RecentConnections />;
       case 'favorites':
         return <Favorites />;
+      case 'keepass':
+        return <KeePassPanel />;
       case 'settings':
         return <Settings />;
       case 'dashboard':

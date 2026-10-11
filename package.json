@@ -21,6 +21,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-router": "^1.117.0",
     "@tauri-apps/plugin-clipboard-manager": "~2.3.2",
+    "@tauri-apps/plugin-dialog": "~2.4.2",
     "@tauri-apps/plugin-fs": "^2.4.0",
     "@tauri-apps/plugin-log": "~2.7.1",
     "@tauri-apps/plugin-opener": "~2.5.2",

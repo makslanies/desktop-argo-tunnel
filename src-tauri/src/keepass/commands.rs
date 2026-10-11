@@ -1,349 +1,228 @@
-use tauri::{AppHandle, Manager};
-use crate::keepass::{models::*, state::KeePassState};
+use std::fs;
+use std::path::{Path, PathBuf};
 
-/// Найти .kdbx файлы в директории
-#[tauri::command]
-pub async fn find_kdbx_files(app: AppHandle) -> Result<Vec<String>, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.find_kdbx_files().await
+use tauri::State;
+use uuid::Uuid;
+
+use crate::keepass::models::*;
+use crate::keepass::vault::Vault;
+use crate::keepass::KeePassState;
+
+const VAULT_DIR_NAME: &str = "KeePassContainers";
+
+/// Vaults created from the UI are stored in `~/KeePassContainers`.
+fn vault_dir() -> Result<PathBuf, String> {
+    dirs::home_dir()
+        .map(|home| home.join(VAULT_DIR_NAME))
+        .ok_or_else(|| "Cannot find the home directory".to_string())
 }
 
-/// Загрузить контейнеры в backend state
-#[tauri::command]
-pub async fn load_containers(app: AppHandle) -> Result<Vec<KeePassContainer>, String> {
-    let keepass_state = app.state::<KeePassState>();
-    let containers = keepass_state.load_containers().await?;
-    
-    // Добавляем логирование для отслеживания статуса блокировки
-    for container in &containers {
-        println!("[DEBUG] Loading container {}, is_locked: {:?}", container.name, container.is_locked);
+fn read_keyfile(path: Option<String>) -> Result<Option<Vec<u8>>, String> {
+    match path {
+        Some(path) if !path.is_empty() => fs::read(&path)
+            .map(Some)
+            .map_err(|e| format!("Cannot read key file: {e}")),
+        _ => Ok(None),
     }
-    
-    Ok(containers)
 }
 
-/// Создать новый KeePass контейнер
-#[tauri::command]
-pub async fn create_container(
-    app: AppHandle, 
-    name: String, 
-    password: String, 
-    keyfile: Option<Vec<u8>>
-) -> Result<KeePassContainer, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.create_container(name, password, keyfile).await
+/// Runs `f` on the open vault with the given id. Errors are turned into strings for the frontend.
+fn with_vault<T>(
+    state: &KeePassState,
+    vault_id: &str,
+    f: impl FnOnce(&mut Vault) -> anyhow::Result<T>,
+) -> Result<T, String> {
+    let mut vaults = state
+        .vaults
+        .lock()
+        .map_err(|_| "KeePass state is unavailable".to_string())?;
+    let vault = vaults
+        .get_mut(vault_id)
+        .ok_or_else(|| "The vault is not open".to_string())?;
+    f(vault).map_err(|e| format!("{e:#}"))
 }
 
-/// Открыть KeePass контейнер
+/// Lists the `.kdbx` files in `~/KeePassContainers`.
 #[tauri::command]
-pub async fn open_container(
-    app: AppHandle, 
-    path: String, 
-    password: String, 
-    keyfile: Option<Vec<u8>>
-) -> Result<Vec<KeePassEntry>, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.open_container(path, password, keyfile).await
+pub async fn keepass_list_files() -> Result<Vec<String>, String> {
+    let dir = vault_dir()?;
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut files: Vec<String> = fs::read_dir(&dir)
+        .map_err(|e| format!("Cannot read {}: {e}", dir.display()))?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| is_kdbx(path))
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    Ok(files)
 }
 
-/// Сохранить KeePass контейнер
+/// Creates `~/KeePassContainers/<name>.kdbx` and opens it.
 #[tauri::command]
-pub async fn save_container(
-    app: AppHandle, 
-    container_id: String, 
-    password: String
+pub async fn keepass_create(
+    state: State<'_, KeePassState>,
+    name: String,
+    password: String,
+    keyfile_path: Option<String>,
+) -> Result<VaultInfo, String> {
+    let name = name.trim();
+    if !is_valid_name(name) {
+        return Err("The name can contain letters, digits, spaces, '-', '_' and '.' only".to_string());
+    }
+
+    let dir = vault_dir()?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
+    let path = dir.join(format!("{name}.kdbx"));
+
+    let keyfile = read_keyfile(keyfile_path)?;
+    let vault = Vault::create(&path, &password, keyfile.as_deref())
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(register(&state, vault)?)
+}
+
+/// Opens an existing `.kdbx` file. If the file is already open, its existing session is returned.
+#[tauri::command]
+pub async fn keepass_open(
+    state: State<'_, KeePassState>,
+    path: String,
+    password: String,
+    keyfile_path: Option<String>,
+) -> Result<VaultInfo, String> {
+    let path = PathBuf::from(&path);
+    if !is_kdbx(&path) {
+        return Err("The file must have a .kdbx extension".to_string());
+    }
+
+    {
+        let vaults = state
+            .vaults
+            .lock()
+            .map_err(|_| "KeePass state is unavailable".to_string())?;
+        if let Some((id, vault)) = vaults.iter().find(|(_, v)| v.path() == path) {
+            return Ok(vault.info(id));
+        }
+    }
+
+    let keyfile = read_keyfile(keyfile_path)?;
+    let vault = Vault::open(&path, &password, keyfile.as_deref())
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(register(&state, vault)?)
+}
+
+fn register(state: &KeePassState, vault: Vault) -> Result<VaultInfo, String> {
+    let id = Uuid::new_v4().to_string();
+    let info = vault.info(&id);
+    state
+        .vaults
+        .lock()
+        .map_err(|_| "KeePass state is unavailable".to_string())?
+        .insert(id, vault);
+    Ok(info)
+}
+
+/// Closes a vault. The file on disk is already up to date, so nothing is written here.
+#[tauri::command]
+pub async fn keepass_close(state: State<'_, KeePassState>, vault_id: String) -> Result<(), String> {
+    state
+        .vaults
+        .lock()
+        .map_err(|_| "KeePass state is unavailable".to_string())?
+        .remove(&vault_id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn keepass_list_groups(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+) -> Result<Vec<VaultGroup>, String> {
+    with_vault(&state, &vault_id, |v| Ok(v.groups()))
+}
+
+#[tauri::command]
+pub async fn keepass_list_entries(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+) -> Result<Vec<VaultEntrySummary>, String> {
+    with_vault(&state, &vault_id, |v| Ok(v.entries()))
+}
+
+/// Returns a single entry including its password.
+#[tauri::command]
+pub async fn keepass_get_entry(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+    entry_id: String,
+) -> Result<VaultEntry, String> {
+    with_vault(&state, &vault_id, |v| v.entry(&entry_id))
+}
+
+/// Creates or updates an entry and writes the file.
+#[tauri::command]
+pub async fn keepass_save_entry(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+    entry: EntryInput,
+) -> Result<String, String> {
+    with_vault(&state, &vault_id, |v| v.save_entry(&entry))
+}
+
+#[tauri::command]
+pub async fn keepass_delete_entry(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+    entry_id: String,
 ) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.save_container(container_id, password).await
+    with_vault(&state, &vault_id, |v| v.delete_entry(&entry_id))
 }
 
-/// Удаляет контейнер
 #[tauri::command]
-pub async fn delete_container(
-    app: AppHandle,
-    container_id: String
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.delete_container(container_id).await
-}
-
-/// Переименовать KeePass контейнер
-#[tauri::command]
-pub async fn rename_container(app: AppHandle, container_id: String, new_name: String) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.rename_container(container_id, new_name).await
-}
-
-/// Изменить пароль KeePass контейнера
-#[tauri::command]
-pub async fn change_container_password(app: AppHandle, container_id: String, current_password: String, new_password: String) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.change_container_password(container_id, current_password, new_password).await
-}
-
-/// Добавить запись в контейнер
-#[tauri::command]
-pub async fn add_entry(
-    app: AppHandle, 
-    container_id: String, 
-    entry: KeePassEntry
-) -> Result<(), String> {
-    println!("[DEBUG] Creating entry: {:?}", entry);
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.add_entry(container_id, entry).await
-}
-
-/// Обновить запись в контейнере
-#[tauri::command]
-pub async fn update_entry(
-    app: AppHandle, 
-    container_id: String, 
-    entry: KeePassEntry
-) -> Result<(), String> {
-    println!("[DEBUG] Updating entry: {:?}", entry);
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.update_entry(container_id, entry).await
-}
-
-/// Удалить запись из контейнера
-#[tauri::command]
-pub async fn delete_entry(
-    app: AppHandle, 
-    container_id: String, 
-    entry_id: String
-) -> Result<(), String> {
-    println!("[DEBUG] Deleting entry: {:?}", entry_id);
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.delete_entry(container_id, entry_id).await
-}
-
-/// Поиск записей в контейнере
-#[tauri::command]
-pub async fn search_entries(
-    app: AppHandle, 
-    container_id: String, 
-    options: SearchOptions
-) -> Result<Vec<KeePassEntry>, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.search_entries(container_id, options).await
-}
-
-/// Получить статистику контейнера
-#[tauri::command]
-pub async fn get_container_stats(
-    app: AppHandle, 
-    container_id: String
-) -> Result<ContainerStats, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.get_container_stats(container_id).await
-}
-
-/// Создать резервную копию контейнера
-#[tauri::command]
-pub async fn create_backup(
-    app: AppHandle, 
-    container_id: String
-) -> Result<BackupInfo, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.create_backup(container_id).await
-}
-
-/// Получить список резервных копий
-#[tauri::command]
-pub async fn list_backups(
-    app: AppHandle, 
-    container_id: String
-) -> Result<Vec<BackupInfo>, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.list_backups(container_id).await
-}
-
-/// Восстановить из резервной копии
-#[tauri::command]
-pub async fn restore_backup(
-    app: AppHandle, 
-    container_id: String, 
-    backup_path: String
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.restore_backup(container_id, backup_path).await
-}
-
-/// Привязать key-файл к контейнеру
-#[tauri::command]
-pub async fn attach_keyfile(
-    app: AppHandle, 
-    container_id: String, 
-    keyfile: Vec<u8>
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.attach_keyfile(container_id, keyfile).await
-}
-
-/// Отвязать key-файл от контейнера
-#[tauri::command]
-pub async fn detach_keyfile(
-    app: AppHandle, 
-    container_id: String
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.detach_keyfile(container_id).await
-}
-
-/// Импортировать контейнер
-#[tauri::command]
-pub async fn import_container(
-    app: AppHandle, 
-    file: Vec<u8>, 
-    password: String, 
-    keyfile: Option<Vec<u8>>
-) -> Result<KeePassContainer, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.import_container(file, password, keyfile).await
-}
-
-/// Экспортировать контейнер
-#[tauri::command]
-pub async fn export_container(
-    app: AppHandle, 
-    container_id: String, 
-    options: ExportOptions
-) -> Result<Vec<u8>, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.export_container(container_id, options).await
-}
-
-/// Получить качество пароля
-#[tauri::command]
-pub async fn get_password_quality(
-    app: AppHandle, 
-    password: String
-) -> Result<PasswordQuality, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.get_password_quality(password).await
-}
-
-/// Добавить группу в контейнер
-#[tauri::command]
-pub async fn add_group(
-    app: AppHandle, 
-    container_id: String, 
-    group: KeePassGroup
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.add_group(container_id, group).await
-}
-
-/// Обновить группу в контейнере
-#[tauri::command]
-pub async fn update_group(
-    app: AppHandle, 
-    container_id: String, 
-    group: KeePassGroup
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.update_group(container_id, group).await
-}
-
-/// Удалить группу из контейнера
-#[tauri::command]
-pub async fn delete_group(
-    app: AppHandle, 
-    container_id: String, 
-    group_id: String
-) -> Result<(), String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.delete_group(container_id, group_id).await
-}
-
-/// Получить аудит событий
-#[tauri::command]
-pub async fn get_audit_events(
-    app: AppHandle,
-    _container_id: Option<String>,
-    _limit: Option<usize>
-) -> Result<Vec<crate::keepass::models::AuditEvent>, String> {
-    let _keepass_state = app.state::<KeePassState>();
-    
-    // TODO: Реализовать получение аудита из базы данных
-    // Пока возвращаем пустой список
-    Ok(vec![])
-}
-
-/// Создать аудит событие
-#[tauri::command]
-pub async fn create_audit_event(
-    app: AppHandle,
-    action: String,
-    resource_type: String,
-    resource_id: String,
-    details: Option<String>
-) -> Result<crate::keepass::models::AuditEvent, String> {
-    let keepass_state = app.state::<KeePassState>();
-    let kdbx_manager = keepass_state.kdbx_manager.read().await;
-    let _event = kdbx_manager.create_audit_event(&action, &resource_type, &resource_id, details.as_deref());
-    tracing::info!("Audit event created: {} {} {}", action, resource_type, resource_id);
-
-    Ok(crate::keepass::models::AuditEvent {
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        action,
-        resource_type,
-        resource_id,
-        details,
-        user_id: None,
-        ip_address: None,
+pub async fn keepass_create_group(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+    parent_id: Option<String>,
+    name: String,
+) -> Result<String, String> {
+    with_vault(&state, &vault_id, |v| {
+        v.create_group(parent_id.as_deref(), &name)
     })
 }
 
-/// Получить статистику безопасности контейнера
 #[tauri::command]
-pub async fn get_security_stats(
-    app: AppHandle,
-    container_id: String
-) -> Result<crate::keepass::models::ContainerStats, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.get_container_stats(container_id).await
+pub async fn keepass_delete_group(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+    group_id: String,
+) -> Result<(), String> {
+    with_vault(&state, &vault_id, |v| v.delete_group(&group_id))
 }
 
-/// Проверить качество пароля
 #[tauri::command]
-pub async fn check_password_quality(
-    app: AppHandle,
-    password: String
-) -> Result<crate::keepass::models::PasswordQuality, String> {
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.get_password_quality(password).await
-} 
-
-/// Закрыть KeePass контейнер
-#[tauri::command]
-pub async fn close_container(
-    app: AppHandle, 
-    container_id: String
+pub async fn keepass_change_password(
+    state: State<'_, KeePassState>,
+    vault_id: String,
+    new_password: String,
+    keyfile_path: Option<String>,
 ) -> Result<(), String> {
-    println!("[DEBUG] Closing container: {}", container_id);
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.close_container(container_id).await
+    let keyfile = read_keyfile(keyfile_path)?;
+    with_vault(&state, &vault_id, |v| {
+        v.change_password(&new_password, keyfile.as_deref())
+    })
 }
 
-/// Заблокировать контейнер
-#[tauri::command]
-pub async fn lock_container(
-    app: AppHandle, 
-    container_id: String
-) -> Result<(), String> {
-    println!("[DEBUG] Locking container, setting is_locked to true: {}", container_id);
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.lock_container(container_id).await
+fn is_kdbx(path: &Path) -> bool {
+    path.extension()
+        .map(|ext| ext.eq_ignore_ascii_case("kdbx"))
+        .unwrap_or(false)
 }
 
-/// Разблокировать контейнер
-#[tauri::command]
-pub async fn unlock_container(
-    app: AppHandle, 
-    container_id: String
-) -> Result<(), String> {
-    println!("[DEBUG] Unlocking container, setting is_locked to false: {}", container_id);
-    let keepass_state = app.state::<KeePassState>();
-    keepass_state.unlock_container(container_id).await
-} 
+fn is_valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.'))
+}
