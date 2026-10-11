@@ -1,6 +1,6 @@
 [package]
 name = "desktop-argo-tunnel"
-version = "0.3.11"
+version = "0.3.12"
 description = "Desktop argo tunnel"
 authors = ["Maksim Lanies"]
 edition = "2021"
